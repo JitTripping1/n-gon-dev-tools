@@ -1,0 +1,330 @@
+(function () {
+  if (window.devToolsUI) {
+    window.devToolsUI.panel.remove();
+    window.removeEventListener("keydown", window.devToolsUI.toggleHandler);
+    clearInterval(window.devToolsUI.healthInterval);
+    clearInterval(window.devToolsUI.energyInterval);
+    delete window.devToolsUI;
+  }
+
+  const panel = document.createElement('div');
+  panel.style = `
+    position: fixed;
+    top: 100px;
+    left: 100px;
+    background: #1e1e1e;
+    color: white;
+    padding: 10px;
+    border: 2px solid #4caf50;
+    border-radius: 8px;
+    z-index: 99999;
+    font-family: sans-serif;
+    width: 240px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.5);
+  `;
+
+  const title = document.createElement('div');
+  title.textContent = 'DevTools';
+  title.style = `
+    font-weight: bold;
+    margin-bottom: 8px;
+    cursor: move;
+    user-select: none;
+  `;
+  panel.appendChild(title);
+
+  const createButton = (label, color, onClick, tooltip) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.style = `
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 8px;
+      background: ${color};
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+    `;
+    btn.onclick = onClick;
+    if (tooltip) {
+      btn.title = tooltip;
+    }
+    panel.appendChild(btn);
+    return btn;
+  };
+
+  let healthInterval = null;
+  let infActive = false;
+  const infBtn = createButton(
+    'Inf Health',
+    '#4caf50',
+    () => {
+      infActive = !infActive;
+      infBtn.style.background = infActive ? '#2e7d32' : '#4caf50';
+      if (infActive) {
+        healthInterval = setInterval(() => {
+          if (typeof m !== 'undefined' && typeof m.addHealth === 'function') {
+            m.addHealth(100);
+          }
+        }, 500);
+      } else {
+        clearInterval(healthInterval);
+      }
+    },
+    'Keeps your health full automatically'
+  );
+
+  let energyInterval = null;
+  let energyActive = false;
+  const energyBtn = createButton(
+    'Inf Energy',
+    '#ff9800',
+    () => {
+      energyActive = !energyActive;
+      energyBtn.style.background = energyActive ? '#e65100' : '#ff9800';
+      if (energyActive) {
+        energyInterval = setInterval(() => {
+          if (typeof m !== 'undefined' && 'energy' in m) {
+            m.energy = 1;
+          }
+        }, 100);
+      } else {
+        clearInterval(energyInterval);
+      }
+    },
+    'Keeps your energy full automatically'
+  );
+
+  createButton(
+    'OneShot Laser',
+    '#f44336',
+    () => {
+      if (typeof tech !== 'undefined') {
+        tech.laserDamage = 11111;
+        console.log('tech.laserDamage set to 11111');
+      }
+    },
+    'Sets laser damage very high for one-shot kills'
+  );
+
+  createButton(
+    '0 Fire Rate',
+    '#00bcd4',
+    () => {
+      if (typeof tech !== 'undefined') {
+        tech.fireRate = 0;
+        console.log('tech.fireRate set to 0');
+      }
+    },
+    'Makes weapons shoot instantly (0 fire rate)'
+  );
+
+  createButton(
+    'Fly',
+    '#607d8b',
+    () => {
+      if (typeof m !== 'undefined' && typeof m.setField === 'function') {
+        m.setField("negative mass");
+        console.log('Fly mode activated');
+      }
+    },
+    'Activates fly mode by setting negative mass field'
+  );
+
+  const weaponList = [
+    "nail gun", "shotgun", "super balls", "wave", "missiles",
+    "grenades", "spores", "drones", "foam", "harpoon", "mines", "laser"
+  ];
+
+  const dropdown = document.createElement('select');
+  dropdown.style = `
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: black;
+    color: white;
+  `;
+  const defaultOption = document.createElement('option');
+  defaultOption.text = 'select a weapon...';
+  defaultOption.disabled = true;
+  defaultOption.selected = true;
+  dropdown.appendChild(defaultOption);
+  weaponList.forEach(w => {
+    const opt = document.createElement('option');
+    opt.value = w;
+    opt.text = w;
+    dropdown.appendChild(opt);
+  });
+  panel.appendChild(dropdown);
+
+  const weaponInput = document.createElement('input');
+  weaponInput.placeholder = 'enter weapon name';
+  weaponInput.style = `
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: #2c2c2c;
+    color: white;
+  `;
+  dropdown.onchange = () => weaponInput.value = dropdown.value;
+  panel.appendChild(weaponInput);
+
+  createButton(
+    'add weapon',
+    '#2196f3',
+    () => {
+      const weapon = weaponInput.value.trim().toLowerCase();
+      if (weapon && typeof b !== 'undefined' && typeof b.giveGuns === 'function') {
+        b.giveGuns(weapon);
+        console.log('gave weapon:', weapon);
+      }
+    },
+    'Adds the selected weapon to your inventory'
+  );
+
+  createButton(
+    'Inf Ammo',
+    '#ff5722',
+    () => {
+      if (typeof tech !== 'undefined') {
+        tech.ammoCap = Infinity;
+        alert('Inf Ammo applied! Only affects newly added weapons.');
+        console.log('tech.ammoCap set to Infinity for new weapons');
+      }
+    },
+    'Sets ammo to infinite for new weapons only'
+  );
+
+  const fieldList = [
+    "field emitter", "standing wave", "perfect diamagnetism", "negative mass",
+    "molecular assembler", "plasma torch", "time dilation", "metamaterial cloaking",
+    "pilot wave", "wormhole", "grappling hook"
+  ];
+
+  const fieldDropdown = document.createElement('select');
+  fieldDropdown.style = `
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: black;
+    color: white;
+  `;
+  const fieldDefault = document.createElement('option');
+  fieldDefault.text = 'select a field...';
+  fieldDefault.disabled = true;
+  fieldDefault.selected = true;
+  fieldDropdown.appendChild(fieldDefault);
+  fieldList.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.text = f;
+    fieldDropdown.appendChild(opt);
+  });
+  panel.appendChild(fieldDropdown);
+
+  const fieldInput = document.createElement('input');
+  fieldInput.placeholder = 'enter field name';
+  fieldInput.style = `
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: #2c2c2c;
+    color: white;
+  `;
+  fieldDropdown.onchange = () => fieldInput.value = fieldDropdown.value;
+  panel.appendChild(fieldInput);
+
+  createButton(
+    'set field',
+    '#795548',
+    () => {
+      const field = fieldInput.value.trim().toLowerCase();
+      if (field && typeof m !== 'undefined' && typeof m.setField === 'function') {
+        m.setField(field);
+        console.log('set field:', field);
+      }
+    },
+    'Sets the selected field on your character'
+  );
+
+  createButton(
+    'Get All Tech',
+    '#9c27b0',
+    () => {
+      if (typeof tech !== 'undefined' && typeof tech.giveTech === 'function') {
+        const allTechs = [
+          "laser", "missile", "shield", "cloak", "warp", "drone", "mine",
+          "spore", "foam", "harpoon", "grappling hook", "plasma torch",
+          "field emitter", "standing wave", "perfect diamagnetism",
+          "negative mass", "molecular assembler", "time dilation",
+          "metamaterial cloaking", "pilot wave", "wormhole"
+        ];
+        allTechs.forEach(t => tech.giveTech(t));
+        console.log("All techs given!");
+      }
+    },
+    'Gives you all available techs'
+  );
+
+  // --- YouTube Label (clickable, full width) ---
+  const ytLabel = document.createElement('a');
+  ytLabel.textContent = 'YouTube: https://www.youtube.com/@chillperson21';
+  ytLabel.href = 'https://www.youtube.com/@chillperson21';
+  ytLabel.target = '_blank';
+  ytLabel.style = `
+    display: block;
+    width: calc(100% - 20px);
+    margin: 0 auto 6px auto;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: #ff0000;
+    color: white;
+    text-align: center;
+    font-weight: bold;
+    text-decoration: none;
+    user-select: none;
+    cursor: pointer;
+  `;
+  panel.appendChild(ytLabel);
+  // ---------------------
+
+  let isDragging = false, offsetX = 0, offsetY = 0;
+  title.onmousedown = e => {
+    isDragging = true;
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+  };
+  document.onmousemove = e => {
+    if (isDragging) {
+      panel.style.left = `${e.clientX - offsetX}px`;
+      panel.style.top = `${e.clientY - offsetY}px`;
+    }
+  };
+  document.onmouseup = () => isDragging = false;
+
+  const toggleHandler = e => {
+    if (e.key.toLowerCase() === 'g' &&
+        document.activeElement.tagName !== 'INPUT' &&
+        document.activeElement.tagName !== 'TEXTAREA') {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+  };
+  window.addEventListener('keydown', toggleHandler);
+
+  document.body.appendChild(panel);
+  window.devToolsUI = {
+    panel,
+    toggleHandler,
+    healthInterval,
+    energyInterval,
+  };
+})();
