@@ -1,332 +1,283 @@
-// put this in console
-
-(function () {
-  if (window.devToolsUI) {
-    window.devToolsUI.panel.remove();
-    window.removeEventListener("keydown", window.devToolsUI.toggleHandler);
+(async function() {
+  if(window.devToolsUI){ 
+    window.devToolsUI.panel.remove(); 
+    window.removeEventListener('keydown', window.devToolsUI.toggleHandler); 
     clearInterval(window.devToolsUI.healthInterval);
     clearInterval(window.devToolsUI.energyInterval);
-    delete window.devToolsUI;
   }
 
-  const panel = document.createElement('div');
-  panel.style = `
-    position: fixed;
-    top: 100px;
-    left: 100px;
-    background: #1e1e1e;
-    color: white;
-    padding: 10px;
-    border: 2px solid #4caf50;
-    border-radius: 8px;
-    z-index: 99999;
-    font-family: sans-serif;
-    width: 240px;
-    box-shadow: 0 0 12px rgba(0,0,0,0.5);
-  `;
+  // --- Load Socket.IO dynamically ---
+  if (!window.io) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
 
-  const title = document.createElement('div');
-  title.textContent = 'DevTools';
-  title.style = `
-    font-weight: bold;
-    margin-bottom: 8px;
-    cursor: move;
-    user-select: none;
-  `;
+  // --- Fingerprint ---
+  function getFingerprint() {
+    return btoa(navigator.userAgent + navigator.language + screen.width + screen.height + window.innerWidth + window.innerHeight);
+  }
+
+  // --- Login ---
+  let username = prompt("Enter your username:");
+  if(!username){ alert("Username required."); return; }
+  const fingerprint = getFingerprint();
+
+  // --- Check server ---
+  try {
+    const health = await fetch('https://server-ev2f.onrender.com/');
+    const healthData = await health.json();
+    if(healthData.status !== "ok"){ alert("DevTools server responded unexpectedly."); return; }
+  } catch(e){
+    alert("Cannot reach DevTools server. Contact chill person.");
+    return;
+  }
+
+  // --- Check ban ---
+  let allowed = false;
+  try {
+    const res = await fetch('https://server-ev2f.onrender.com/checkBan', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username, fingerprint })
+    });
+    const data = await res.json();
+    allowed = data.allowed;
+  } catch(e){
+    alert("Failed to check ban status. Server error?");
+    return;
+  }
+
+  if(!allowed){ alert("You are banned from using DevTools."); return; }
+
+  // --- Admin login ---
+  let adminMode = false;
+  const pw = prompt("Enter admin password (optional):");
+  if(pw){
+    try {
+      const res = await fetch('https://server-ev2f.onrender.com/adminLogin', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ password: pw })
+      });
+      const data = await res.json();
+      if(data.success){ adminMode=true; alert("Admin mode enabled! You can ban users."); }
+      else alert("Incorrect admin password.");
+    } catch(e){
+      alert("Admin login failed. Server error?");
+    }
+  }
+
+  // --- Create DevTools UI ---
+  const panel = document.createElement('div');
+  panel.style = `position:fixed;top:100px;left:100px;background:#1e1e1e;color:white;padding:10px;border:2px solid #4caf50;border-radius:8px;z-index:99999;font-family:sans-serif;width:240px;box-shadow:0 0 12px rgba(0,0,0,0.5);`;
+  const title = document.createElement('div'); 
+  title.textContent = 'DevTools'; 
+  title.style = 'font-weight:bold;margin-bottom:8px;cursor:move;user-select:none;';
   panel.appendChild(title);
 
-  const createButton = (label, color, onClick, tooltip) => {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.style = `
-      width: 100%;
-      padding: 8px;
-      margin-bottom: 8px;
-      background: ${color};
-      border: none;
-      border-radius: 4px;
-      color: white;
-      cursor: pointer;
-    `;
-    btn.onclick = onClick;
-    if (tooltip) {
-      btn.title = tooltip;
-    }
-    panel.appendChild(btn);
-    return btn;
-  };
+  function createButton(label,color,onClick,tooltip){
+    const btn=document.createElement('button'); btn.textContent=label;
+    btn.style=`width:100%;padding:8px;margin-bottom:8px;background:${color};border:none;border-radius:4px;color:white;cursor:pointer;`;
+    btn.onclick=onClick; if(tooltip) btn.title=tooltip; panel.appendChild(btn); return btn;
+  }
 
-  let healthInterval = null;
-  let infActive = false;
-  const infBtn = createButton(
-    'Inf Health',
-    '#4caf50',
-    () => {
-      infActive = !infActive;
-      infBtn.style.background = infActive ? '#2e7d32' : '#4caf50';
-      if (infActive) {
-        healthInterval = setInterval(() => {
-          if (typeof m !== 'undefined' && typeof m.addHealth === 'function') {
-            m.addHealth(100);
-          }
-        }, 500);
-      } else {
-        clearInterval(healthInterval);
-      }
-    },
-    'Keeps your health full automatically'
-  );
+  // --- Admin Ban ---
+  if(adminMode){
+    createButton('Ban User','#b71c1c',async ()=>{
+      const target = prompt('Enter username to ban:');
+      if(!target) return;
+      try{
+        await fetch('https://server-ev2f.onrender.com/banUser',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ username: target, adminPassword: pw })
+        });
+        alert(`User ${target} permanently banned.`);
+      } catch(e){ alert("Failed to ban user. Server error?"); }
+    },'Admin: Permanently ban a user');
+  }
 
-  let energyInterval = null;
-  let energyActive = false;
-  const energyBtn = createButton(
-    'Inf Energy',
-    '#ff9800',
-    () => {
-      energyActive = !energyActive;
-      energyBtn.style.background = energyActive ? '#e65100' : '#ff9800';
-      if (energyActive) {
-        energyInterval = setInterval(() => {
-          if (typeof m !== 'undefined' && 'energy' in m) {
-            m.energy = 1;
-          }
-        }, 100);
-      } else {
-        clearInterval(energyInterval);
-      }
-    },
-    'Keeps your energy full automatically'
-  );
+  // --- Inf Health ---
+  let healthInterval=null, infActive=false;
+  createButton('Inf Health','#4caf50',()=>{ 
+    infActive = !infActive;
+    if(infActive){ 
+      healthInterval = setInterval(()=>{ if(typeof m!=='undefined' && typeof m.addHealth==='function') m.addHealth(100); },500);
+    } else clearInterval(healthInterval);
+  },'Keeps your health full automatically');
 
-  createButton(
-    'OneShot Laser',
-    '#f44336',
-    () => {
-      if (typeof tech !== 'undefined') {
-        tech.laserDamage = 11111;
-        console.log('tech.laserDamage set to 11111');
-      }
-    },
-    'Sets laser damage very high for one-shot kills'
-  );
+  // --- Inf Energy ---
+  let energyInterval=null, energyActive=false;
+  createButton('Inf Energy','#ff9800',()=>{ 
+    energyActive=!energyActive;
+    if(energyActive){ energyInterval=setInterval(()=>{ if(typeof m!=='undefined' && 'energy' in m) m.energy=1; },100); }
+    else clearInterval(energyInterval);
+  },'Keeps your energy full automatically');
 
-  createButton(
-    '0 Fire Rate',
-    '#00bcd4',
-    () => {
-      if (typeof tech !== 'undefined') {
-        tech.fireRate = 0;
-        console.log('tech.fireRate set to 0');
-      }
-    },
-    'Makes weapons shoot instantly (0 fire rate)'
-  );
+  // --- OneShot Laser ---
+  createButton('OneShot Laser','#f44336',()=>{ if(typeof tech!=='undefined'){ tech.laserDamage=11111; console.log('tech.laserDamage set to 11111'); } },'Sets laser damage very high');
 
-  createButton(
-    'Fly',
-    '#607d8b',
-    () => {
-      if (typeof m !== 'undefined' && typeof m.setField === 'function') {
-        m.setField("negative mass");
-        console.log('Fly mode activated');
-      }
-    },
-    'Activates fly mode by setting negative mass field'
-  );
+  // --- 0 Fire Rate ---
+  createButton('0 Fire Rate','#00bcd4',()=>{ if(typeof tech!=='undefined'){ tech.fireRate=0; console.log('tech.fireRate set to 0'); } },'Makes weapons shoot instantly');
 
-  const weaponList = [
-    "nail gun", "shotgun", "super balls", "wave", "missiles",
-    "grenades", "spores", "drones", "foam", "harpoon", "mines", "laser"
-  ];
+  // --- Fly Mode ---
+  createButton('Fly','#607d8b',()=>{ if(typeof m!=='undefined' && typeof m.setField==='function'){ m.setField("negative mass"); console.log('Fly mode activated'); } },'Activates fly mode');
 
-  const dropdown = document.createElement('select');
-  dropdown.style = `
-    width: 100%;
-    padding: 6px;
-    margin-bottom: 6px;
-    border-radius: 4px;
-    border: 1px solid #555;
-    background: black;
-    color: white;
-  `;
-  const defaultOption = document.createElement('option');
-  defaultOption.text = 'select a weapon...';
-  defaultOption.disabled = true;
-  defaultOption.selected = true;
-  dropdown.appendChild(defaultOption);
-  weaponList.forEach(w => {
-    const opt = document.createElement('option');
-    opt.value = w;
-    opt.text = w;
-    dropdown.appendChild(opt);
-  });
+  // --- Weapons ---
+  const weaponList=["nail gun","shotgun","super balls","wave","missiles","grenades","spores","drones","foam","harpoon","mines","laser"];
+  const dropdown=document.createElement('select');
+  dropdown.style='width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid #555;background:black;color:white;';
+  const defaultOption=document.createElement('option'); defaultOption.text='select a weapon...'; defaultOption.disabled=true; defaultOption.selected=true; dropdown.appendChild(defaultOption);
+  weaponList.forEach(w=>{ const opt=document.createElement('option'); opt.value=w; opt.text=w; dropdown.appendChild(opt); });
   panel.appendChild(dropdown);
 
-  const weaponInput = document.createElement('input');
-  weaponInput.placeholder = 'enter weapon name';
-  weaponInput.style = `
-    width: 100%;
-    padding: 6px;
-    margin-bottom: 6px;
-    border-radius: 4px;
-    border: 1px solid #555;
-    background: #2c2c2c;
-    color: white;
-  `;
-  dropdown.onchange = () => weaponInput.value = dropdown.value;
+  const weaponInput=document.createElement('input'); 
+  weaponInput.placeholder='enter weapon name'; 
+  weaponInput.style='width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid #555;background:#2c2c2c;color:white;';
+  dropdown.onchange=()=>weaponInput.value=dropdown.value; 
   panel.appendChild(weaponInput);
 
-  createButton(
-    'add weapon',
-    '#2196f3',
-    () => {
-      const weapon = weaponInput.value.trim().toLowerCase();
-      if (weapon && typeof b !== 'undefined' && typeof b.giveGuns === 'function') {
-        b.giveGuns(weapon);
-        console.log('gave weapon:', weapon);
-      }
-    },
-    'Adds the selected weapon to your inventory'
-  );
+  createButton('add weapon','#2196f3',()=>{ const weapon=weaponInput.value.trim().toLowerCase(); if(weapon && typeof b!=='undefined' && typeof b.giveGuns==='function'){ b.giveGuns(weapon); console.log('gave weapon:',weapon); } },'Adds the selected weapon');
 
-  createButton(
-    'Inf Ammo',
-    '#ff5722',
-    () => {
-      if (typeof tech !== 'undefined') {
-        tech.ammoCap = Infinity;
-        alert('Inf Ammo applied! Only affects newly added weapons.');
-        console.log('tech.ammoCap set to Infinity for new weapons');
-      }
-    },
-    'Sets ammo to infinite for new weapons only'
-  );
+  // --- Inf Ammo ---
+  createButton('Inf Ammo','#ff5722',()=>{ if(typeof tech!=='undefined'){ tech.ammoCap=Infinity; alert('Inf Ammo applied!'); console.log('tech.ammoCap set to Infinity'); } },'Sets ammo to infinite');
 
-  const fieldList = [
-    "field emitter", "standing wave", "perfect diamagnetism", "negative mass",
-    "molecular assembler", "plasma torch", "time dilation", "metamaterial cloaking",
-    "pilot wave", "wormhole", "grappling hook"
-  ];
-
-  const fieldDropdown = document.createElement('select');
-  fieldDropdown.style = `
-    width: 100%;
-    padding: 6px;
-    margin-bottom: 6px;
-    border-radius: 4px;
-    border: 1px solid #555;
-    background: black;
-    color: white;
-  `;
-  const fieldDefault = document.createElement('option');
-  fieldDefault.text = 'select a field...';
-  fieldDefault.disabled = true;
-  fieldDefault.selected = true;
-  fieldDropdown.appendChild(fieldDefault);
-  fieldList.forEach(f => {
-    const opt = document.createElement('option');
-    opt.value = f;
-    opt.text = f;
-    fieldDropdown.appendChild(opt);
-  });
+  // --- Fields ---
+  const fieldList=["field emitter","standing wave","perfect diamagnetism","negative mass","molecular assembler","plasma torch","time dilation","metamaterial cloaking","pilot wave","wormhole","grappling hook"];
+  const fieldDropdown=document.createElement('select'); fieldDropdown.style='width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid #555;background:black;color:white;';
+  const fieldDefault=document.createElement('option'); fieldDefault.text='select a field...'; fieldDefault.disabled=true; fieldDefault.selected=true; fieldDropdown.appendChild(fieldDefault);
+  fieldList.forEach(f=>{ const opt=document.createElement('option'); opt.value=f; opt.text=f; fieldDropdown.appendChild(opt); });
   panel.appendChild(fieldDropdown);
 
-  const fieldInput = document.createElement('input');
-  fieldInput.placeholder = 'enter field name';
-  fieldInput.style = `
-    width: 100%;
-    padding: 6px;
-    margin-bottom: 6px;
-    border-radius: 4px;
-    border: 1px solid #555;
-    background: #2c2c2c;
-    color: white;
-  `;
-  fieldDropdown.onchange = () => fieldInput.value = fieldDropdown.value;
-  panel.appendChild(fieldInput);
+  const fieldInput=document.createElement('input'); fieldInput.placeholder='enter field name'; fieldInput.style='width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid #555;background:#2c2c2c;color:white;';
+  fieldDropdown.onchange=()=>fieldInput.value=fieldDropdown.value; panel.appendChild(fieldInput);
 
-  createButton(
-    'set field',
-    '#795548',
-    () => {
-      const field = fieldInput.value.trim().toLowerCase();
-      if (field && typeof m !== 'undefined' && typeof m.setField === 'function') {
-        m.setField(field);
-        console.log('set field:', field);
-      }
-    },
-    'Sets the selected field on your character'
-  );
+  createButton('set field','#795548',()=>{ const field=fieldInput.value.trim().toLowerCase(); if(field && typeof m!=='undefined' && typeof m.setField==='function'){ m.setField(field); console.log('set field:',field); } },'Sets selected field');
 
-  createButton(
-    'Get All Tech',
-    '#9c27b0',
-    () => {
-      if (typeof tech !== 'undefined' && typeof tech.giveTech === 'function') {
-        const allTechs = [
-          "laser", "missile", "shield", "cloak", "warp", "drone", "mine",
-          "spore", "foam", "harpoon", "grappling hook", "plasma torch",
-          "field emitter", "standing wave", "perfect diamagnetism",
-          "negative mass", "molecular assembler", "time dilation",
-          "metamaterial cloaking", "pilot wave", "wormhole"
-        ];
-        allTechs.forEach(t => tech.giveTech(t));
-        console.log("All techs given!");
-      }
-    },
-    'Gives you all available techs'
-  );
+  // --- Rewind ---
+  const rewindInput=document.createElement('input'); rewindInput.type='number'; rewindInput.placeholder='steps to rewind';
+  rewindInput.style='width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid #555;background:#2c2c2c;color:white;';
+  panel.appendChild(rewindInput);
+  createButton('Rewind Steps','#8bc34a',()=>{ const steps=parseInt(rewindInput.value,10); if(!isNaN(steps) && typeof m!=='undefined' && typeof m.rewind==='function'){ m.rewind(steps); console.log(`Rewound ${steps} steps`); } },'Rewind your character');
 
-  // --- YouTube Label (clickable, full width) ---
-  const ytLabel = document.createElement('a');
-  ytLabel.textContent = 'YouTube: https://www.youtube.com/@chillperson21';
-  ytLabel.href = 'https://www.youtube.com/@chillperson21';
-  ytLabel.target = '_blank';
-  ytLabel.style = `
-    display: block;
-    width: calc(100% - 20px);
-    margin: 0 auto 6px auto;
-    padding: 8px 10px;
-    border-radius: 4px;
-    background: #ff0000;
-    color: white;
-    text-align: center;
-    font-weight: bold;
-    text-decoration: none;
-    user-select: none;
-    cursor: pointer;
-  `;
+  // --- YouTube label ---
+  const ytLabel=document.createElement('a'); ytLabel.textContent='YouTube: https://www.youtube.com/@chillperson21';
+  ytLabel.href='https://www.youtube.com/@chillperson21'; ytLabel.target='_blank';
+  ytLabel.style='display:block;width:calc(100% - 20px);margin:0 auto 6px auto;padding:8px 10px;border-radius:4px;background:#ff0000;color:white;text-align:center;font-weight:bold;text-decoration:none;user-select:none;cursor:pointer;';
   panel.appendChild(ytLabel);
-  // ---------------------
-
-  let isDragging = false, offsetX = 0, offsetY = 0;
-  title.onmousedown = e => {
-    isDragging = true;
-    offsetX = e.clientX - panel.offsetLeft;
-    offsetY = e.clientY - panel.offsetTop;
-  };
-  document.onmousemove = e => {
-    if (isDragging) {
-      panel.style.left = `${e.clientX - offsetX}px`;
-      panel.style.top = `${e.clientY - offsetY}px`;
-    }
-  };
-  document.onmouseup = () => isDragging = false;
-
-  const toggleHandler = e => {
-    if (e.key.toLowerCase() === 'g' &&
-        document.activeElement.tagName !== 'INPUT' &&
-        document.activeElement.tagName !== 'TEXTAREA') {
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    }
-  };
-  window.addEventListener('keydown', toggleHandler);
 
   document.body.appendChild(panel);
-  window.devToolsUI = {
-    panel,
-    toggleHandler,
-    healthInterval,
-    energyInterval,
+
+  // --- Dragging for main panel ---
+  let isDragging=false, offsetX=0, offsetY=0;
+  title.addEventListener('mousedown', e => {
+    isDragging=true;
+    offsetX=e.clientX-panel.offsetLeft;
+    offsetY=e.clientY-panel.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if(isDragging){
+      panel.style.left=`${e.clientX-offsetX}px`;
+      panel.style.top=`${e.clientY-offsetY}px`;
+    }
+  });
+  document.addEventListener('mouseup', ()=>{ isDragging=false; });
+
+  // --- Toggle ---
+  const toggleHandler=e=>{ 
+    if(e.key.toLowerCase()==='g' && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA'){ 
+      panel.style.display=panel.style.display==='none'?'block':'none'; 
+      chatPanel.style.display=chatPanel.style.display==='none'?'flex':'none';
+    } 
   };
+  window.addEventListener('keydown',toggleHandler);
+
+  // --- Real-time Global Chat ---
+  const socket = io('https://server-ev2f.onrender.com');
+
+  const chatPanel = document.createElement('div');
+  chatPanel.style = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 300px;
+    max-height: 400px;
+    background: #1e1e1e;
+    color: white;
+    padding: 8px;
+    border: 2px solid #4caf50;
+    border-radius: 8px;
+    z-index:99999;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+  `;
+
+  const chatTitle = document.createElement('div');
+  chatTitle.textContent = 'Global Chat';
+  chatTitle.style = 'font-weight:bold;margin-bottom:6px;cursor:move;user-select:none;';
+  chatPanel.appendChild(chatTitle);
+
+  const chatMessages = document.createElement('div');
+  chatMessages.style = 'flex:1;overflow-y:auto;margin-bottom:6px;padding:4px;background:#121212;border-radius:4px;';
+  chatPanel.appendChild(chatMessages);
+
+  const chatInput = document.createElement('input');
+  chatInput.placeholder = 'Type a message...';
+  chatInput.style = 'padding:6px;border-radius:4px;border:1px solid #555;background:#2c2c2c;color:white;';
+  chatPanel.appendChild(chatInput);
+
+  document.body.appendChild(chatPanel);
+
+  // --- Load initial messages ---
+  socket.on('initMessages', messages => {
+    chatMessages.innerHTML = '';
+    messages.forEach(m => {
+      const div = document.createElement('div');
+      div.textContent = `${m.username}: ${m.message}`;
+      chatMessages.appendChild(div);
+    });
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
+
+  // --- Listen for new messages ---
+  socket.on('newMessage', msg => {
+    const div = document.createElement('div');
+    div.textContent = `${msg.username}: ${msg.message}`;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
+
+  // --- Send message ---
+  chatInput.addEventListener('keydown', e => {
+    if(e.key === 'Enter' && chatInput.value.trim()){
+      const message = chatInput.value.trim();
+      socket.emit('sendMessage', { username, message });
+      chatInput.value = '';
+    }
+  });
+
+  // --- Chat panel dragging ---
+  let chatDragging=false, chatOffsetX=0, chatOffsetY=0;
+  chatTitle.addEventListener('mousedown', e=>{
+    chatDragging=true;
+    chatOffsetX=e.clientX-chatPanel.offsetLeft;
+    chatOffsetY=e.clientY-chatPanel.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e=>{
+    if(chatDragging){
+      chatPanel.style.left=`${e.clientX-chatOffsetX}px`;
+      chatPanel.style.top=`${e.clientY-chatOffsetY}px`;
+    }
+  });
+  document.addEventListener('mouseup', ()=>{ chatDragging=false; });
+
+  window.devToolsUI={panel,toggleHandler,healthInterval,energyInterval};
 })();
